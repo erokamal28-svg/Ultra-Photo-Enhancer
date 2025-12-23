@@ -1,7 +1,6 @@
 import os
 import cv2
 import numpy as np
-import torch
 from fastapi import FastAPI, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.responses import FileResponse
@@ -11,7 +10,6 @@ from basicsr.archs.rrdbnet_arch import RRDBNet
 
 app = FastAPI()
 
-# Enable CORS for frontend connectivity
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -19,19 +17,18 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Root route to check if server is online
 @app.get("/")
 async def root():
     return {"status": "AI Fast Image Enhancer Online"}
 
-# Initialize Fast AI Models (Optimized for CPU)
-# Using Scale 2 to prevent memory crashes (Killed Error)
+# ULTRA LITE CONFIGURATION
+# Scale=2 and Tile=120 will make it much faster and prevent "Killed" error
 model_resgrgan = RRDBNet(num_in_ch=3, num_out_ch=3, num_feat=64, num_block=23, num_grow_ch=32, scale=2)
 upsampler = RealESRGANer(
     scale=2, 
     model_path='https://github.com/xinntao/Real-ESRGAN/releases/download/v0.2.1/RealESRGAN_x2plus.pth',
     model=model_resgrgan,
-    tile=100, 
+    tile=120, 
     tile_pad=10,
     pre_pad=0,
     half=False
@@ -47,25 +44,19 @@ face_enhancer = GFPGANer(
 
 @app.post("/enhance")
 async def enhance_image(file: UploadFile = File(...)):
-    # Read uploaded image
     contents = await file.read()
     nparr = np.frombuffer(contents, np.uint8)
     img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
 
-    # Automatic resizing for large images to prevent "Killed" error
+    # Fast Resizing: Downscale if image is too large to save RAM
     h, w = img.shape[:2]
-    if h > 1200 or w > 1200:
-        img = cv2.resize(img, (w//2, h//2), interpolation=cv2.INTER_AREA)
+    if h > 800 or w > 800:
+        img = cv2.resize(img, (800, int(800 * h / w)), interpolation=cv2.INTER_AREA)
 
-    # Fast AI Enhancement Process
-    _, _, output = face_enhancer.enhance(
-        img, 
-        has_aligned=False, 
-        only_center_face=False, 
-        paste_back=True
-    )
+    # Process
+    _, _, output = face_enhancer.enhance(img, has_aligned=False, only_center_face=False, paste_back=True)
 
-    output_path = "enhanced_result.png"
+    output_path = "result.png"
     cv2.imwrite(output_path, output)
-    
     return FileResponse(output_path)
+EOF
